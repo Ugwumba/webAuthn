@@ -12,7 +12,7 @@
     <ul id="passkeyList"></ul>
 
     <script>
-      const API_BASE = "http://localhost:4000/api/user";
+      const API_BASE = "http://localhost:4000/api/passkeys";
       function bufferToBase64URL(buffer) {
         const bytes = new Uint8Array(buffer);
         let binary = "";
@@ -28,18 +28,16 @@
 
       async function registerPasskey() {
         // 1. Get registration options
-        const res = await fetch(
-          `${API_BASE}/security/passkeys/generate-passkey-registration`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${sessionStorage.getItem("token")}`,
-              "Content-Type": "application/json",
-            },
+        const res = await fetch(`${API_BASE}/generate-passkey-registration`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${sessionStorage.getItem("token")}`,
+            "Content-Type": "application/json",
           },
-        );
+        });
 
         const { options } = await res.json();
+        console.log("Received options from backend:", options);
 
         // Convert challenge + user.id
         options.challenge = Uint8Array.from(
@@ -58,66 +56,81 @@
         });
 
         // 3. Send to backend
-        await fetch(
-          `${API_BASE}/security/passkeys/verify-passkey-registration`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${sessionStorage.getItem("token")}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              id: credential.id, // already base64url
-              rawId: bufferToBase64URL(credential.rawId),
-              type: credential.type,
-              response: {
-                attestationObject: bufferToBase64URL(
-                  credential.response.attestationObject,
-                ),
-                clientDataJSON: bufferToBase64URL(
-                  credential.response.clientDataJSON,
-                ),
-              },
-              deviceName: navigator.userAgent,
-            }),
+        await fetch(`${API_BASE}/verify-passkey-registration`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${sessionStorage.getItem("token")}`,
+            "Content-Type": "application/json",
           },
-        );
+          body: JSON.stringify({
+            id: credential.id, // already base64url
+            rawId: bufferToBase64URL(credential.rawId),
+            type: credential.type,
+            response: {
+              attestationObject: bufferToBase64URL(
+                credential.response.attestationObject,
+              ),
+              clientDataJSON: bufferToBase64URL(
+                credential.response.clientDataJSON,
+              ),
+            },
+            deviceName: navigator.userAgent,
+          }),
+        });
 
         alert("Passkey registered successfully");
         loadPasskeys();
       }
 
       async function loadPasskeys() {
-        const res = await fetch(`${API_BASE}/security/passkeys`, {
-          headers: {
-            Authorization: `Bearer ${sessionStorage.getItem("token")}`,
-          },
-        });
+        try {
+          const res = await fetch(
+            "http://localhost:4000/api/passkeys",
+            {
+              headers: {
+                Authorization: `Bearer ${sessionStorage.getItem("token")}`,
+              },
+            },
+          );
 
-        if (!res.ok) {
-          console.error("Failed to load passkeys");
-          return;
-        }
+          if (!res.ok) {
+            console.error("Failed to load passkeys");
+            return;
+          }
 
-        const data = await res.json();
+          const data = await res.json();
 
-        if (!Array.isArray(data.passkeys)) return;
+          // passkey is a single object
+          if (!data.passkey) return;
 
-        const list = document.getElementById("passkeyList");
-        list.innerHTML = "";
+          const list = document.getElementById("passkeyList");
+          if (!list) {
+            console.error("passkeyList element not found");
+            return;
+          }
 
-        data.passkeys.forEach((pk) => {
+          list.innerHTML = "";
+
+          const passkey = data.passkey;
+
           const li = document.createElement("li");
-          li.innerHTML = `
-      ${pk.deviceName} (${pk.platform})
-      <button onclick="revoke('${pk.credentialId}')">Revoke</button>
-    `;
+          li.textContent = `${passkey.deviceName} (Registered at: ${new Date(
+            passkey.createdAt,
+          ).toLocaleString()})`;
+
+          const revokeBtn = document.createElement("button");
+          revokeBtn.textContent = "Revoke";
+          revokeBtn.onclick = () => revokePasskey(passkey.id);
+
+          li.appendChild(revokeBtn);
           list.appendChild(li);
-        });
+        } catch (err) {
+          console.error("Error loading passkeys:", err);
+        }
       }
 
       async function revoke(id) {
-        await fetch(`${API_BASE}/security/passkeys/${id}`, {
+        await fetch(`http://localhost:4000/api/passkeys`, {
           method: "DELETE",
           headers: {
             Authorization: `Bearer ${sessionStorage.getItem("token")}`,

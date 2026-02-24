@@ -9,7 +9,7 @@
     <button onclick="loginWithPasskey()">Login</button>
 
     <script>
-      const API_BASE = "http://localhost:4000/api/user";
+      const API_BASE = "http://localhost:4000/api/passkeys";
 
       function bufferToBase64URL(buffer) {
         const bytes = new Uint8Array(buffer);
@@ -27,8 +27,12 @@
         try {
           // 1. Get login options from backend
           const optionsRes = await fetch(
-            `${API_BASE}/security/passkeys/generate-passkey-login`,
-            { method: "POST", headers: { "Content-Type": "application/json" } },
+            `${API_BASE}/generate-passkey-login`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: "ugwumbachizurumoke@gmail.com" }), // For demo, hardcode email. In real app, get from input field
+            },
           );
           const { options, challenge } = await optionsRes.json();
 
@@ -45,7 +49,7 @@
 
           // 3. Send assertion to backend with challenge
           const verifyRes = await fetch(
-            `${API_BASE}/security/passkeys/verify-passkey-login`,
+            `${API_BASE}/verify-passkey-login`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
