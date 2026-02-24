@@ -23,41 +23,44 @@
           .replace(/=/g, "");
       }
 
+      function base64URLToUint8Array(base64url) {
+        const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
+        const binary = atob(base64);
+        return Uint8Array.from(binary, (c) => c.charCodeAt(0));
+      }
+
       async function loginWithPasskey() {
         try {
           // 1. Get login options from backend
-          const optionsRes = await fetch(
-            `${API_BASE}/generate-passkey-login`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email: "ugwumbachizurumoke@gmail.com" }), // For demo, hardcode email. In real app, get from input field
-            },
-          );
-          const { options, challenge } = await optionsRes.json();
+          const optionsRes = await fetch(`${API_BASE}/generate-passkey-login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: "ugwumbachizurumoke@gmail.com" }), // For demo, hardcode email. In real app, get from input field
+          });
+          const { options } = await optionsRes.json();
 
-          // Convert challenge to Uint8Array
-          options.challenge = Uint8Array.from(
-            atob(challenge.replace(/-/g, "+").replace(/_/g, "/")),
-            (c) => c.charCodeAt(0),
-          );
+          options.challenge = base64URLToUint8Array(options.challenge);
 
-          // 2. Ask browser to authenticate
+          if (options.allowCredentials) {
+            options.allowCredentials.forEach((cred) => {
+              cred.id = base64URLToUint8Array(cred.id);
+            });
+          }
+
           const assertion = await navigator.credentials.get({
             publicKey: options,
           });
 
           // 3. Send assertion to backend with challenge
-          const verifyRes = await fetch(
-            `${API_BASE}/verify-passkey-login`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
+          const verifyRes = await fetch(`${API_BASE}/verify-passkey-login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: "ugwumbachizurumoke@gmail.com", // or from input field
+              credential: {
                 id: assertion.id,
                 rawId: bufferToBase64URL(assertion.rawId),
                 type: assertion.type,
-                challenge: challenge, // send original challenge for stateless verification
                 response: {
                   authenticatorData: bufferToBase64URL(
                     assertion.response.authenticatorData,
@@ -70,16 +73,16 @@
                     ? bufferToBase64URL(assertion.response.userHandle)
                     : null,
                 },
-              }),
-            },
-          );
+              },
+            }),
+          });
 
           const data = await verifyRes.json();
           console.log(data);
 
           if (data.success) {
             alert("Login successful");
-            window.location.href = "dashboard.html";
+            // window.location.href = "dashboard.html";
           } else {
             alert("Login failed");
           }

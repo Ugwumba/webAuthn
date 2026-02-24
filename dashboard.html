@@ -26,6 +26,12 @@
           .replace(/=/g, "");
       }
 
+      function base64URLToUint8Array(base64url) {
+        const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
+        const binary = atob(base64);
+        return Uint8Array.from(binary, (c) => c.charCodeAt(0));
+      }
+
       async function registerPasskey() {
         // 1. Get registration options
         const res = await fetch(`${API_BASE}/generate-passkey-registration`, {
@@ -39,16 +45,14 @@
         const { options } = await res.json();
         console.log("Received options from backend:", options);
 
-        // Convert challenge + user.id
-        options.challenge = Uint8Array.from(
-          atob(options.challenge.replace(/-/g, "+").replace(/_/g, "/")),
-          (c) => c.charCodeAt(0),
-        );
+        options.challenge = base64URLToUint8Array(options.challenge);
+        options.user.id = base64URLToUint8Array(options.user.id);
 
-        options.user.id = Uint8Array.from(
-          atob(options.user.id.replace(/-/g, "+").replace(/_/g, "/")),
-          (c) => c.charCodeAt(0),
-        );
+        if (options.excludeCredentials) {
+          options.excludeCredentials.forEach((cred) => {
+            cred.id = base64URLToUint8Array(cred.id);
+          });
+        }
 
         // 2. Create passkey
         const credential = await navigator.credentials.create({
@@ -84,14 +88,11 @@
 
       async function loadPasskeys() {
         try {
-          const res = await fetch(
-            "http://localhost:4000/api/passkeys",
-            {
-              headers: {
-                Authorization: `Bearer ${sessionStorage.getItem("token")}`,
-              },
+          const res = await fetch("http://localhost:4000/api/passkeys", {
+            headers: {
+              Authorization: `Bearer ${sessionStorage.getItem("token")}`,
             },
-          );
+          });
 
           if (!res.ok) {
             console.error("Failed to load passkeys");
